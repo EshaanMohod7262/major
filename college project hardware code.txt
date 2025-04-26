@@ -1,0 +1,209 @@
+  #include <ESP8266HTTPClient.h>
+
+#include <Wire.h>
+#include "MAX30100_PulseOximeter.h"
+ 
+#include <ESP8266WiFi.h>
+ 
+ const char* ssid = "eshaan";
+const char* password = "eshaan12";
+ 
+#include "Wire.h"
+#include "Adafruit_GFX.h"
+#include "OakOLED.h"
+#include <SoftwareSerial.h>
+ int c=0;
+ int d=0;
+ float latt;
+ float lon;
+ 
+// ThingSpeak settings
+const char* server = "http://api.thingspeak.com/update";
+String apiKey = "1NFCLQNRJD0KZKYV";
+// The serial connection to the GPS device
+#define REPORTING_PERIOD_MS 1000
+OakOLED oled;
+ const double VCC = 3.3;             // NodeMCU on board 3.3v vcc
+const double R2 = 10000;            // 10k ohm series resistor
+const double adc_resolution = 1023; // 10-bit adc
+
+const double A = 0.001129148;   // thermistor equation parameters
+const double B = 0.000234125;
+const double C = 0.0000000876741;
+ 
+ int butt;
+// Connections : SCL PIN - D1 , SDA PIN - D2 , INT PIN - D0
+PulseOximeter pox;
+ 
+float BPM, SpO2;
+uint32_t tsLastReport = 0;
+ 
+const unsigned char bitmap [] PROGMEM=
+{
+0x00, 0x00, 0x00, 0x00, 0x01, 0x80, 0x18, 0x00, 0x0f, 0xe0, 0x7f, 0x00, 0x3f, 0xf9, 0xff, 0xc0,
+0x7f, 0xf9, 0xff, 0xc0, 0x7f, 0xff, 0xff, 0xe0, 0x7f, 0xff, 0xff, 0xe0, 0xff, 0xff, 0xff, 0xf0,
+0xff, 0xf7, 0xff, 0xf0, 0xff, 0xe7, 0xff, 0xf0, 0xff, 0xe7, 0xff, 0xf0, 0x7f, 0xdb, 0xff, 0xe0,
+0x7f, 0x9b, 0xff, 0xe0, 0x00, 0x3b, 0xc0, 0x00, 0x3f, 0xf9, 0x9f, 0xc0, 0x3f, 0xfd, 0xbf, 0xc0,
+0x1f, 0xfd, 0xbf, 0x80, 0x0f, 0xfd, 0x7f, 0x00, 0x07, 0xfe, 0x7e, 0x00, 0x03, 0xfe, 0xfc, 0x00,
+0x01, 0xff, 0xf8, 0x00, 0x00, 0xff, 0xf0, 0x00, 0x00, 0x7f, 0xe0, 0x00, 0x00, 0x3f, 0xc0, 0x00,
+0x00, 0x0f, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+ 
+void onBeatDetected()
+{
+    Serial.println("Beat Detected!");
+    oled.drawBitmap( 60, 20, bitmap, 28, 28, 1);
+    oled.display();
+   
+}
+ 
+void setup()
+{pinMode(D5,INPUT_PULLUP);
+ pinMode(D4,OUTPUT);
+    Serial.begin(115200);
+      Serial.print("Connecting to ");
+  Serial.println(ssid);
+   
+  WiFi.begin(ssid, password);
+ 
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+ Serial.println("Starting...");
+  //ss.write("\r");
+ 
+    oled.begin();
+    oled.clearDisplay();
+    oled.setTextSize(1);
+    oled.setTextColor(1);
+    oled.setCursor(0, 0);
+ 
+    oled.println("Initializing pulse oximeter..");
+    oled.display();
+   
+    pinMode(16, OUTPUT);
+   // Blynk.begin(auth, ssid, pass);
+ 
+    Serial.print("Initializing Pulse Oximeter..");
+ 
+    if (!pox.begin())
+    {
+         Serial.println("FAILED");
+         oled.clearDisplay();
+         oled.setTextSize(1);
+         oled.setTextColor(1);
+         oled.setCursor(0, 0);
+         oled.println("FAILED");
+         oled.display();
+         for(;;);
+    }
+    else
+    {
+         oled.clearDisplay();
+         oled.setTextSize(1);
+         oled.setTextColor(1);
+         oled.setCursor(0, 0);
+         oled.println("SUCCESS");
+         oled.display();
+         Serial.println("SUCCESS");
+         pox.setOnBeatDetectedCallback(onBeatDetected);
+    }
+ 
+    // The default current for the IR LED is 50mA and it could be changed by uncommenting the following line.
+     //pox.setIRLedCurrent(MAX30100_LED_CURR_7_6MA);
+ 
+}
+  double Vout, Rth, temperature, adc_value;
+
+void loop()
+{  
+
+ float temperature = readNTCTemperature();
+pox.update();
+ 
+         
+   
+     if (millis() - tsLastReport > REPORTING_PERIOD_MS)
+    {    BPM = pox.getHeartRate();
+        SpO2 = pox.getSpO2();
+        Serial.print("Heart rate:");
+        Serial.print(BPM);
+        Serial.print(" bpm / SpO2:");
+        Serial.print(SpO2);
+        Serial.println(" %");
+ 
+        oled.clearDisplay();
+
+        oled.setTextSize(1);
+        oled.setTextColor(1);
+        oled.setCursor(0, 0);
+        oled.print("BPM ");
+        oled.print(pox.getHeartRate());
+        oled.setTextSize(1);
+        oled.setTextColor(1);
+        oled.setCursor(0, 20);
+        oled.print("Spo2 ");
+        oled.print(pox.getSpO2());
+        oled.setTextSize(1);
+        oled.setTextColor(1);
+        oled.setCursor(0, 40);
+        oled.print("T ");
+        oled.print(temperature);
+        oled.display();
+        c=c+1; d=d+1;
+//        if(c>10){
+//          cloud();
+//          c=0;
+//        }
+        tsLastReport = millis();
+    }
+     
+   
+     
+      if(d>20){
+    cloud();
+      d=0;
+      Serial.println("cloud");
+      pox.begin();
+   
+ 
+    }
+}
+void cloud()
+{
+  WiFiClient client;
+    HTTPClient http;
+ 
+ {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    String url = server + String("?api_key=") + apiKey +
+                 "&field1=" + String(temperature) +
+                 "&field2=" + String(BPM)+
+                  "&field3=" + String(SpO2) ;
+    Serial.println(url);
+    http.begin(client,url);
+    int httpCode = http.GET();
+    if (httpCode > 0) {
+      Serial.printf(" response code: %d\n", httpCode);
+    } else {
+      Serial.printf("HTTP error: %s\n", http.errorToString(httpCode).c_str());
+    }
+    http.end();
+  }
+   pox.shutdown();
+   delay(2000);
+     }
+}
+float readNTCTemperature() {
+  int analogValue = analogRead(A0);
+  float voltage = analogValue * 3.3 / 1023.0;
+  float resistance = (3.3 * 10000 / voltage) - 10000;
+  float steinhart = resistance / 10000.0;
+  steinhart = log(steinhart);
+  steinhart /= 3950.0;
+  steinhart += 1.0 / (25.0 + 273.15);
+  steinhart = 1.0 / steinhart;
+  return steinhart - 273.15;
+}
